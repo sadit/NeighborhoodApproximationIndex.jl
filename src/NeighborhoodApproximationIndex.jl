@@ -1,5 +1,5 @@
 module NeighborhoodApproximationIndex
 
-# Write your package code here.
+include("invindex.jl")
 
 end

@@ -38,5 +38,5 @@ script:
   - julia -e 'using Pkg; pkg"add https://github.com/sadit/KCenters.jl"'
 
 after_success:
-  - julia -e 'using Pkg; import KCenters; joinpath(dirname(pathof(NeighborhoodApproximationIndex)), ".."); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'
-  - julia -e 'using Pkg; import KCenters; joinpath(dirname(pathof(NeighborhoodApproximationIndex)), ".."); Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
+  - julia -e 'using Pkg; import NeighborhoodApproximationIndex; joinpath(dirname(pathof(NeighborhoodApproximationIndex)), ".."); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'
+  - julia -e 'using Pkg; import NeighborhoodApproximationIndex; joinpath(dirname(pathof(NeighborhoodApproximationIndex)), ".."); Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'

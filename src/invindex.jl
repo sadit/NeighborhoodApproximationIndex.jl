@@ -6,29 +6,51 @@ using StatsBase
 using SimilaritySearch
 import SimilaritySearch: search, optimize!
 using KCenters
+
 using JSON
 export DeloneInvIndex, fit, predict
 
 mutable struct DeloneInvIndex{T} <: Index
     db::Vector{T}
     centers::Index
-    lists::Vector{Vector{Int}}
-    dmax::Vector{Float64}
+    lists::Vector{Vector{UInt32}}
+    dmax::Vector{Float32}
     n::Int
     region_expansion::Int
 end
 
 """
-    fit(::Type{DeloneInvIndex}, X::AbstractVector{T}, kcenters_::NamedTuple, region_expansion=3) where T
+    fit(::Type{DeloneInvIndex}, dist::Function, X::AbstractVector{T}; numcenters=128, region_expansion=3, initial=:dnet, maxiters=7) where T
 
-Creates a DeloneInvIndex, which is a metric index using the `kcenters` output and `X`.
-This is an index that implements approximate search.
+Construct an approximate similarity search index based on a Delone partition on `X` using distance function `dist` using the initial set of points.
+The `region_expasion` parameter indicates how queries are solved (looking for nearest regions). The parameter 
+`initial` can be also a clustering strategy, and therefore, it selects `numcenters` centers as prototypes.
+
+The supported values for `initial` are the following values.
+    - `:fft` the _farthest first traversal_ selects a set of farthest points among them to serve as cluster seeds.
+    - `:dnet` the _density net_ algorithm selects a set of points following the same distribution of the datasets; in contrast with a random selection, `:dnet` ensures that the selected points are not ``\\lfloor n/k \\rfloor`` nearest neighbors.
+    - `:sfft` the `:fft` over a ``k + \\log n`` random sample
+    - `:sdnet` the `:dnet` over a ``k + \\log n`` random sample
+    - `:rand` selects the set of random points along the dataset.
+    - array of vectors (centers)
+
+`maxiters` is also a value working when `initial` is a clustering strategy. Please see `KCenters.kcenters` for more details.
+"""
+function fit(::Type{DeloneInvIndex}, dist::Function, X::AbstractVector{T}; numcenters=128, region_expansion=3, initial=:dnet, maxiters=7) where T
+    centers = kcenters(dist, X, numcenters; initial=initial, maxiters=maxiters)
+    index = fit(DeloneInvIndex, X, centers; region_expansion=region_expansion)
+end
 
 """
-function fit(::Type{DeloneInvIndex}, X::AbstractVector{T}, kcenters_::NamedTuple, region_expansion=3) where T
+    fit(::Type{DeloneInvIndex}, X::AbstractVector{T}, kcenters_::NamedTuple; region_expansion=3) where T
+
+Creates a DeloneInvIndex with a given clustering data (`kcenters_`).
+
+"""
+function fit(::Type{DeloneInvIndex}, X::AbstractVector{T}, kcenters_::NamedTuple; region_expansion=3) where T
     k = length(kcenters_.centroids)
-    dmax = zeros(Float64, k)
-    lists = [Int[] for i in 1:k]
+    dmax = zeros(Float32, k)
+    lists = [UInt32[] for i in 1:k]
 
     for i in eachindex(kcenters_.codes)
         code = kcenters_.codes[i]

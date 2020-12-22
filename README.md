@@ -19,4 +19,4 @@ Eric S. Tellez, Edgar Chavez, Gonzalo Navarro: Succinct nearest neighbor search.
 
 ```
 
-I am rewritting some of this methods in Julia. Therefore, by now, you will not find a complete set of features (like compact datastructures) or a broad exploration in the distance functions in the mapped space. The precise implementations with compression can be found in the old C# library (https://github.com/sadit/natix)[natix]
+I am rewritting some of this methods in Julia. Therefore, by now, you will not find a complete set of features (like compact datastructures) or a broad exploration in the distance functions in the mapped space. The precise implementations with compression can be found in the old C# library [https://github.com/sadit/natix](Natix).

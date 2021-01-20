@@ -1,9 +1,10 @@
 name = "NeighborhoodApproximationIndex"
 uuid = "73dc1408-15d9-420f-8382-2ac46fb81e72"
 authors = ["Eric S. Tellez"]
-version = "0.1.0"
+version = "0.2.1"
 
 [deps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 KCenters = "5d8de97f-65f8-4dd6-a15b-0f89c36a43ce"
 SimilaritySearch = "053f045d-5466-53fd-b400-a066f88fe02a"
@@ -11,9 +12,9 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [compat]
 JSON = "0.21"
-KCenters = "0.2.5"
-SimilaritySearch = "0.3.21"
-StatsBase = "0.32"
+KCenters = "0.3.0"
+SimilaritySearch = "0.4.2"
+StatsBase = "0.32, 0.33"
 julia = "1.1"
 
 [extras]

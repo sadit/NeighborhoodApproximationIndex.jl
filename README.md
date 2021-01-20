@@ -7,6 +7,34 @@
 [![Coverage](https://codecov.io/gh/sadit/NeighborhoodApproximationIndex.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/sadit/NeighborhoodApproximationIndex.jl)
 
 
+## Installation
+
+```julia
+using Pkg
+Pkg.add("NeighborhoodApproximation")
+
+```
+
+## Usage
+
+```julia
+using SimilaritySearch
+using NeighborhoodApproximationIndex
+function create_dataset(n, dim)
+    [rand(Float32, dim) for i in 1:n]
+end
+
+X = create_dataset(10_000, 8)
+queries = create_dataset(100, 8)
+napp = fit(DeloneInvIndex, l2_distance, X; numcenters=128, initial=:rand, maxiters=3, region_expansion=3)
+```
+
+See examples at [examples directory](https://github.com/sadit/NeighborhoodApproximationIndex.jl/tree/main/examples) of this repository. These are [Pluto.jl](https://github.com/fonsp/Pluto.jl) notebooks, and probably you must install it in you wanna take a look.
+
+
+
+
+## About the methods in this package
 This package contains some implementations of approximate similarity search methods based on neighborhood approximation, similar to those found in 
 
 ```
@@ -19,4 +47,4 @@ Eric S. Tellez, Edgar Chavez, Gonzalo Navarro: Succinct nearest neighbor search.
 
 ```
 
-I am rewritting some of this methods in Julia. Therefore, by now, you will not find a complete set of features (like compact datastructures) or a broad exploration in the distance functions in the mapped space. The precise implementations with compression can be found in the old C# library [https://github.com/sadit/natix](Natix).
+I am rewritting some of this methods in Julia. Therefore, by now, you will not find a complete set of features (like compact datastructures) or a broad exploration in the distance functions in the mapped space. The precise implementations with compression can be found in the old C# library [natix](https://github.com/sadit/natix).

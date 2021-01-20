@@ -1,26 +1,39 @@
 # This file is a part of KCenters.jl
 # License is Apache 2.0: https://www.apache.org/licenses/LICENSE-2.0.txt
 
-import StatsBase: fit, predict
-using StatsBase
 using SimilaritySearch
 import SimilaritySearch: search, optimize!
+import StatsBase: fit, predict
+using StatsBase
 using KCenters
-
 using JSON
+
 export DeloneInvIndex, fit, predict
 
-mutable struct DeloneInvIndex{T} <: Index
-    db::Vector{T}
-    centers::Index
-    lists::Vector{Vector{UInt32}}
-    dmax::Vector{Float32}
-    n::Int
-    region_expansion::Int
+mutable struct DeloneInvIndexOptions
+    n::Int32
+    ksearch::Int32
 end
 
+struct DeloneInvIndex{DistType<:PreMetric, DataType<:AbstractVector, CentersType<:AbstractSearchContext} <: AbstractSearchContext
+    dist::DistType
+    db::DataType
+    centers::CentersType
+    lists::Vector{Vector{UInt32}}
+    dmax::Vector{Float32}
+    res::KnnResult
+    opts::DeloneInvIndexOptions
+end
+
+Base.copy(I::DeloneInvIndex; dist=I.dist, db=I.db, centers=I.centers, lists=I.lists, dmax=I.dmax, res=I.res, opts=I.opts) =
+    DeloneInvIndex(dist, db, centers, lists, dmax, res, opts)
+
+Base.string(I::DeloneInvIndexOptions) = "{n=$(I.n), ksearch=$(I.ksearch)}"
+Base.string(I::DeloneInvIndex) = "{DeloneInvIndex: dist=$(I.dist), refs=$(length(I.centers.db)), opts=$(string(I.opts))}"
+
 """
-    fit(::Type{DeloneInvIndex}, dist::Function, X::AbstractVector{T}; numcenters=128, region_expansion=3, initial=:dnet, maxiters=7) where T
+    DeloneInvIndex(dist::PreMetric, X::AbstractVector, kcenters_::NamedTuple; ksearch=3, k=10)
+    DeloneInvIndex(dist::PreMetric, X::AbstractVector; numcenters=128, ksearch=3, initial=:dnet, maxiters=7, k=10)
 
 Construct an approximate similarity search index based on a Delone partition on `X` using distance function `dist` using the initial set of points.
 The `region_expasion` parameter indicates how queries are solved (looking for nearest regions). The parameter 
@@ -36,18 +49,8 @@ The supported values for `initial` are the following values.
 
 `maxiters` is also a value working when `initial` is a clustering strategy. Please see `KCenters.kcenters` for more details.
 """
-function fit(::Type{DeloneInvIndex}, dist::Function, X::AbstractVector{T}; numcenters=128, region_expansion=3, initial=:dnet, maxiters=7) where T
-    centers = kcenters(dist, X, numcenters; initial=initial, maxiters=maxiters)
-    index = fit(DeloneInvIndex, X, centers; region_expansion=region_expansion)
-end
 
-"""
-    fit(::Type{DeloneInvIndex}, X::AbstractVector{T}, kcenters_::NamedTuple; region_expansion=3) where T
-
-Creates a DeloneInvIndex with a given clustering data (`kcenters_`).
-
-"""
-function fit(::Type{DeloneInvIndex}, X::AbstractVector{T}, kcenters_::NamedTuple; region_expansion=3) where T
+function DeloneInvIndex(dist::PreMetric, X::AbstractVector, kcenters_::NamedTuple; ksearch=3, k=10)
     k = length(kcenters_.centroids)
     dmax = zeros(Float32, k)
     lists = [UInt32[] for i in 1:k]
@@ -59,20 +62,31 @@ function fit(::Type{DeloneInvIndex}, X::AbstractVector{T}, kcenters_::NamedTuple
         dmax[code] = max(dmax[code], d)
     end
 
-    C = fit(Sequential, kcenters_.centroids)
-    DeloneInvIndex(X, C, lists, dmax, length(kcenters_.codes), region_expansion)
+    C = ExhaustiveSearch(dist, kcenters_.centroids)
+    opts = DeloneInvIndexOptions(length(kcenters_.codes), ksearch)
+    DeloneInvIndex(dist, X, C, lists, dmax, KnnResult(k), opts)
 end
 
+function DeloneInvIndex(dist::PreMetric, X::AbstractVector; numcenters=0, ksearch=3, initial=:dnet, maxiters=7, k=10)
+    numcenters = numcenters == 0 ? ceil(Int, sqrt(length(X))) : numcenters
+    centers = kcenters(dist, X, numcenters; initial=initial, maxiters=maxiters)
+    index = DeloneInvIndex(dist, X, centers; ksearch=ksearch, k=k)
+end
+
+
 """
-    search(index::DeloneInvIndex{T}, dist::Function, q::T, res::KnnResult) where T
+    search(index::DeloneInvIndex, q::T, res::KnnResult)
 
 Searches nearest neighbors of `q` inside the `index` under the distance function `dist`.
 """
-function search(index::DeloneInvIndex{T}, dist::Function, q::T, res::KnnResult) where T
-    cres = search(index.centers, dist, q, KnnResult(index.region_expansion))
-    for c in cres
+function search(index::DeloneInvIndex, q, res::KnnResult)
+    #cres = KnnResult(index.ksearch)
+    cres = search(index.centers, q)
+
+    for i in 1:length(cres)
+        c = cres[i]
         @inbounds for i in index.lists[c.id]
-            d = dist(q, index.db[i])
+            d = SimilaritySearch.evaluate(index.dist, q, index.db[i])
             push!(res, i, d)
         end
     end
@@ -82,26 +96,21 @@ end
 
 
 """
-    optimize!(index::DeloneInvIndex{T}, dist::Function, recall=0.9; k=10, num_queries=128, perf=nothing, verbose=false) where T
+    optimize!(perf::Performance, index::DeloneInvIndex, recall=0.9; numqueries=128, verbose=false, k=10)
 
-Tries to configure `index` to achieve the specified recall for fetching `k` nearest neighbors. Notice that if `perf` is not given then
-the index will use dataset's items and therefore it will adjust for them.
+Tries to configure `index` to achieve the specified recall for fetching `k` nearest neighbors.
 """
-function optimize!(index::DeloneInvIndex{T}, dist::Function, recall=0.9; k=10, num_queries=128, perf=nothing, verbose=false) where T
-    verbose && println("KCenters.DeloneInvIndex> optimizing for recall=$(recall)")
-    if perf === nothing
-        perf = Performance(index.db, dist; expected_k=k, num_queries=num_queries)
+function optimize!(perf::Performance, index::DeloneInvIndex, recall=0.9; numqueries=128, verbose=false, k=10)
+    verbose && println("$(string(index)) optimizing for recall=$(recall)")
+    index.opts.ksearch = 1
+    p = probe(perf, index)
+
+    while p.macrorecall < recall && index.opts.ksearch < length(index.lists)
+        index.opts.ksearch += 1
+        verbose && println("$(string(index)) optimize! step ksearch=$(index.opts.ksearch), performance $(JSON.json(p))")
+        p = probe(perf, index)
     end
 
-    index.region_expansion = 1
-    p = probe(perf, index, dist)
-
-    while p.recall < recall && index.region_expansion < length(index.lists)
-        index.region_expansion += 1
-        verbose && println("KCenters.DeloneInvIndex> optimize! step region_expansion=$(index.region_expansion), performance $(JSON.json(p))")
-        p = probe(perf, index, dist)
-    end
-
-    verbose && println("KCenters.DeloneInvIndex> reached performance $(JSON.json(p))")
+    verbose && println("$(string(index)) reached performance $(JSON.json(p))")
     index
 end

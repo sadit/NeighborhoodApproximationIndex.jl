@@ -19,6 +19,7 @@ begin
 	using SimilaritySearch
 	using NeighborhoodApproximationIndex
 	using Colors
+	using PlutoUI
 end
 
 # ╔═╡ 5cd87a9e-5506-11eb-2744-6f02144677ff
@@ -51,7 +52,7 @@ begin
 end
 
 # ╔═╡ 1ce583f6-54fb-11eb-10ad-b5dc9328ca3b
-index = fit(DeloneInvIndex, l2_distance, X; numcenters=128, initial=:rand, maxiters=3, region_expansion=3);
+index = DeloneInvIndex(L2Distance(), X; numcenters=128, initial=:rand, maxiters=3, ksearch=3);
 # index = fit(Sequential, X);
 
 # ╔═╡ 9899d2b8-550c-11eb-3eef-59e40dfe6d26
@@ -65,12 +66,24 @@ begin
 	"""
 end
 
+# ╔═╡ 3fb931fc-618a-11eb-2d13-eb5322bb307e
+begin
+	qinverted = 1 .- X[example_symbol]' # just to distinguish easily
+	res = KnnResult(10)
+	with_terminal() do
+		@info "search time:"
+		@time search(index, X[example_symbol], res)
+		for p in res
+			print(p.id => round(p.dist, digits=3), ", ")
+		end
+		println("end; k=$(length(res))")
+	end
+end
+
 # ╔═╡ def63abc-45e7-11eb-231d-11d94709acd3
 begin
-	@time res = search(index, squared_l2_distance, X[example_symbol], KnnResult(10))
-	qinverted = 1 .- X[example_symbol]' # just to distinguish easily
-	h = hcat(qinverted,  [X[p.id]' for p in res]...)
-	
+		h = hcat(qinverted,  [X[p.id]' for p in res]...);
+
 	md""" $(size(h))
 
 Query Id: $(example_symbol)
@@ -82,7 +95,7 @@ $(Gray.(h))
 
 
 note: the symbol is the query object and its colors has been inverted
-	"""
+"""
 end
 
 # ╔═╡ Cell order:
@@ -93,4 +106,5 @@ end
 # ╠═1ce583f6-54fb-11eb-10ad-b5dc9328ca3b
 # ╠═9899d2b8-550c-11eb-3eef-59e40dfe6d26
 # ╟─5b743cbc-54fa-11eb-1be4-4b619e1070b2
-# ╟─def63abc-45e7-11eb-231d-11d94709acd3
+# ╟─3fb931fc-618a-11eb-2d13-eb5322bb307e
+# ╠═def63abc-45e7-11eb-231d-11d94709acd3

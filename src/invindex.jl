@@ -1,14 +1,12 @@
 # This file is a part of KCenters.jl
 # License is Apache 2.0: https://www.apache.org/licenses/LICENSE-2.0.txt
 
-using SimilaritySearch
 import SimilaritySearch: search, optimize!
-import StatsBase: fit, predict
 using StatsBase
 using KCenters
-using JSON
+using JSON3
 
-export DeloneInvIndex, fit, predict
+export DeloneInvIndex, search, optimize!
 
 mutable struct DeloneInvIndexOptions
     n::Int32
@@ -25,6 +23,9 @@ struct DeloneInvIndex{DistType<:PreMetric, DataType<:AbstractVector, CentersType
     opts::DeloneInvIndexOptions
 end
 
+StructTypes.StructType(::Type{DeloneInvIndexOptions}) = StructTypes.Struct()
+StructTypes.StructType(::Type{<:DeloneInvIndex}) = StructTypes.Struct()
+
 Base.copy(I::DeloneInvIndex; dist=I.dist, db=I.db, centers=I.centers, lists=I.lists, dmax=I.dmax, res=I.res, opts=I.opts) =
     DeloneInvIndex(dist, db, centers, lists, dmax, res, opts)
 
@@ -32,7 +33,7 @@ Base.string(I::DeloneInvIndexOptions) = "{n=$(I.n), ksearch=$(I.ksearch)}"
 Base.string(I::DeloneInvIndex) = "{DeloneInvIndex: dist=$(I.dist), refs=$(length(I.centers.db)), opts=$(string(I.opts)), knn=$(maxlength(I.res))}"
 
 """
-    DeloneInvIndex(dist::PreMetric, X::AbstractVector, kcenters_::NamedTuple; ksearch=3, k=10)
+    DeloneInvIndex(dist::PreMetric, X::AbstractVector, kcenters_::ClusteringData; ksearch=3, k=10)
     DeloneInvIndex(dist::PreMetric, X::AbstractVector; numcenters=128, ksearch=3, initial=:dnet, maxiters=7, k=10)
 
 Construct an approximate similarity search index based on a Delone partition on `X` using distance function `dist` using the initial set of points.
@@ -50,8 +51,8 @@ The supported values for `initial` are the following values.
 `maxiters` is also a value working when `initial` is a clustering strategy. Please see `KCenters.kcenters` for more details.
 """
 
-function DeloneInvIndex(dist::PreMetric, X::AbstractVector, kcenters_::NamedTuple; ksearch=3, k=10)
-    k = length(kcenters_.centroids)
+function DeloneInvIndex(dist::PreMetric, X::AbstractVector, kcenters_::ClusteringData; ksearch=3, k=10)
+    k = length(kcenters_.centers)
     dmax = zeros(Float32, k)
     lists = [UInt32[] for i in 1:k]
 
@@ -62,7 +63,7 @@ function DeloneInvIndex(dist::PreMetric, X::AbstractVector, kcenters_::NamedTupl
         dmax[code] = max(dmax[code], d)
     end
 
-    C = ExhaustiveSearch(dist, kcenters_.centroids)
+    C = ExhaustiveSearch(dist, kcenters_.centers)
     opts = DeloneInvIndexOptions(length(kcenters_.codes), ksearch)
     DeloneInvIndex(dist, X, C, lists, dmax, KnnResult(k), opts)
 end
@@ -107,10 +108,10 @@ function optimize!(perf::Performance, index::DeloneInvIndex, recall=0.9; numquer
 
     while p.macrorecall < recall && index.opts.ksearch < length(index.lists)
         index.opts.ksearch += 1
-        verbose && println("$(string(index)) optimize! step ksearch=$(index.opts.ksearch), performance $(JSON.json(p))")
+        verbose && println("$(string(index)) optimize! step ksearch=$(index.opts.ksearch), performance $(JSON3.write(p))")
         p = probe(perf, index)
     end
 
-    verbose && println("$(string(index)) reached performance $(JSON.json(p))")
+    verbose && println("$(string(index)) reached performance $(JSON3.write(p))")
     index
 end

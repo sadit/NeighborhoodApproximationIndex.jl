@@ -2,7 +2,7 @@
 # License is Apache 2.0: https://www.apache.org/licenses/LICENSE-2.0.txt
 
 using SimilaritySearch
-using JSON
+using JSON3
 using Test
 
 function test_knr_vectors(perf, knr, lower)
@@ -28,9 +28,12 @@ end
 
     knr = Knr(dist, db; numrefs=64, kbuild=2)
     p = test_knr_vectors(perf, knr, 0.7)
-    @info "-- $(string(knr)) $(JSON.json(p))"
+    @info "-- $(string(knr)) $(JSON3.write(p))"
     optimize!(perf, knr; recall=0.95, ksearch=k)
     p = test_knr_vectors(perf, knr, 0.95)
-    @info "-- Optimized $(string(knr)) $(JSON.json(knr.opts)) -- $(JSON.json(p))"
+    @info "-- Optimized $(string(knr)) $(JSON3.write(knr.opts)) -- $(JSON3.write(p))"
+
+    @info "Serialization"
+    test_knr_vectors(perf, JSON3.read(JSON3.write(knr), typeof(knr)), 0.95)
 end
 

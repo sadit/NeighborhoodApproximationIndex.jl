@@ -1,9 +1,6 @@
 # This file is a part of SimilaritySearch.jl
 # License is Apache 2.0: https://www.apache.org/licenses/LICENSE-2.0.txt
 
-using SimilaritySearch
-using Dates
-using SimilaritySearch
 import SimilaritySearch: search, optimize!
 export Knr, KnrOptions
 
@@ -22,6 +19,9 @@ struct Knr{RefSearchType<:AbstractSearchContext, DataType<:AbstractVector, Dista
     res::KnnResult
     opts::KnrOptions
 end
+
+StructTypes.StructType(::Type{KnrOptions}) = StructTypes.Struct()
+StructTypes.StructType(::Type{<:Knr}) = StructTypes.Struct()
 
 Base.copy(knr::Knr; dist=knr.dist, db=knr.db, refsearch=knr.refsearch, kbuild=knr.kbuild, invindex=knr.invindex, res=knr.res, opts=knr.opts) =
     Knr(dist, db, refsearch, kbuild, invindex, res, opts)

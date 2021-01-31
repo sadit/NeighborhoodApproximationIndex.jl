@@ -30,7 +30,7 @@ Base.copy(I::DeloneInvIndex; dist=I.dist, db=I.db, centers=I.centers, lists=I.li
     DeloneInvIndex(dist, db, centers, lists, dmax, res, opts)
 
 Base.string(I::DeloneInvIndexOptions) = "{n=$(I.n), ksearch=$(I.ksearch)}"
-Base.string(I::DeloneInvIndex) = "{DeloneInvIndex: dist=$(I.dist), refs=$(length(I.centers.db)), opts=$(string(I.opts)), knn=$(maxlength(I.res))}"
+Base.string(I::DeloneInvIndex) = "{DeloneInvIndex: dist=$(I.dist), refs=$(length(I.centers.db)), opts=$(string(I.opts))}"
 
 """
     DeloneInvIndex(dist::PreMetric, X::AbstractVector, kcenters_::ClusteringData; ksearch=3, k=10)

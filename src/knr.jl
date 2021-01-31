@@ -26,7 +26,7 @@ StructTypes.StructType(::Type{<:Knr}) = StructTypes.Struct()
 Base.copy(knr::Knr; dist=knr.dist, db=knr.db, refsearch=knr.refsearch, kbuild=knr.kbuild, invindex=knr.invindex, res=knr.res, opts=knr.opts) =
     Knr(dist, db, refsearch, kbuild, invindex, res, opts)
 Base.string(p::KnrOptions) = "{KnrOptions: ksearch=$(p.ksearch), minmatches=$(p.minmatches)}"
-Base.string(p::Knr) = "{Knr: dist=$(p.dist), n=$(length(p.db)), refs=$(length(p.refsearch.db)), kbuild=$(p.kbuild), $(string(p.opts)), knn=$(maxlength(p.res))}"
+Base.string(p::Knr) = "{Knr: dist=$(p.dist), n=$(length(p.db)), refs=$(length(p.refsearch.db)), kbuild=$(p.kbuild), $(string(p.opts))}"
 
 
 function Knr(

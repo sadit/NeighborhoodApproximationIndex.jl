@@ -5,7 +5,7 @@ using Test
 
 
 @testset "Testing Delone Inverted Index" begin
-    using KCenters, SimilaritySearch, JSON3
+    using KCenters, SimilaritySearch
     using NeighborhoodApproximationIndex
 
     dim = 4
@@ -25,9 +25,5 @@ using Test
 
     @info "after optimization: $(string(index))" (recall=p.macrorecall, queries_per_second= 1 / p.searchtime, eval_ratio=p.evaluations / length(X))
     # we can expect a small recall reduction since we are using a db's subset for optimizin the index
-    @test p.macrorecall > 0.7
-
-    @info "Serialization"
-    p = probe(P, JSON3.read(JSON3.write(index), typeof(index)))
     @test p.macrorecall > 0.7
 end

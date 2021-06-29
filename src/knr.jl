@@ -20,9 +20,6 @@ struct Knr{RefSearchType<:AbstractSearchContext, DataType<:AbstractVector, Dista
     opts::KnrOptions
 end
 
-StructTypes.StructType(::Type{KnrOptions}) = StructTypes.Struct()
-StructTypes.StructType(::Type{<:Knr}) = StructTypes.Struct()
-
 Base.copy(knr::Knr; dist=knr.dist, db=knr.db, refsearch=knr.refsearch, kbuild=knr.kbuild, invindex=knr.invindex, res=knr.res, opts=knr.opts) =
     Knr(dist, db, refsearch, kbuild, invindex, res, opts)
 Base.string(p::KnrOptions) = "{KnrOptions: ksearch=$(p.ksearch), minmatches=$(p.minmatches)}"
@@ -85,8 +82,8 @@ function Knr(dist::PreMetric, db::AbstractVector{T}, refsearch::AbstractSearchCo
     n = length(db)
 
     for i in 1:n
-        for p in search(refsearch, db[i], kbuild)
-            push!(invindex[p.id], i)
+        for (id_, dist_) in search(refsearch, db[i], kbuild)
+            push!(invindex[id_], i)
         end
 
         counter += 1
@@ -164,8 +161,8 @@ function search(knr::Knr, q, res::KnnResult)
     minmatches = knr.opts.minmatches
 
     @inbounds for i in eachindex(kres)
-        p = kres[i]
-        for objID in knr.invindex[p.id]
+        (id_, dist_) = kres[i]
+        for objID in knr.invindex[id_]
             #c = dz[objID] + 1
             #dz[objID] = c
             c = get(dz, objID, zero(Int8)) + one(Int8)
@@ -181,12 +178,12 @@ function search(knr::Knr, q, res::KnnResult)
 end
 
 """
-    optimize!(perf::Performance, index::Knr; recall=0.9, ksearch=10, verbose=index.opts.verbose)
+    optimize!(perf::Performance, index::Knr; recall=0.9, verbose=index.opts.verbose)
 
 
 Optimizes the index to achieve the specified recall.
 """
-function optimize!(perf::Performance, index::Knr; recall=0.9, ksearch=10, verbose=index.opts.verbose)
+function optimize!(perf::Performance, index::Knr; recall=0.9, verbose=index.opts.verbose)
     verbose && println(stderr, "$(string(index)) optimizing index for recall=$(recall)")
     index.opts.minmatches = 1
     index.opts.ksearch = 1

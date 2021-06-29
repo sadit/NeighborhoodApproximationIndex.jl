@@ -4,7 +4,6 @@
 import SimilaritySearch: search, optimize!
 using StatsBase
 using KCenters
-using JSON3
 
 export DeloneInvIndex, search, optimize!
 
@@ -22,9 +21,6 @@ struct DeloneInvIndex{DistType<:PreMetric, DataType<:AbstractVector, CentersType
     res::KnnResult
     opts::DeloneInvIndexOptions
 end
-
-StructTypes.StructType(::Type{DeloneInvIndexOptions}) = StructTypes.Struct()
-StructTypes.StructType(::Type{<:DeloneInvIndex}) = StructTypes.Struct()
 
 Base.copy(I::DeloneInvIndex; dist=I.dist, db=I.db, centers=I.centers, lists=I.lists, dmax=I.dmax, res=I.res, opts=I.opts) =
     DeloneInvIndex(dist, db, centers, lists, dmax, res, opts)
@@ -85,8 +81,8 @@ function search(index::DeloneInvIndex, q, res::KnnResult)
     cres = search(index.centers, q)
 
     for i in 1:length(cres)
-        c = cres[i]
-        @inbounds for i in index.lists[c.id]
+        (id_, dist_) = cres[i]
+        @inbounds for i in index.lists[id_]
             d = SimilaritySearch.evaluate(index.dist, q, index.db[i])
             push!(res, i, d)
         end
@@ -108,10 +104,10 @@ function optimize!(perf::Performance, index::DeloneInvIndex, recall=0.9; numquer
 
     while p.macrorecall < recall && index.opts.ksearch < length(index.lists)
         index.opts.ksearch += 1
-        verbose && println("$(string(index)) optimize! step ksearch=$(index.opts.ksearch), performance $(JSON3.write(p))")
+        verbose && println(stderr, "$(string(index)) optimize! step ksearch=$(index.opts.ksearch), performance ", p)
         p = probe(perf, index)
     end
 
-    verbose && println("$(string(index)) reached performance $(JSON3.write(p))")
+    verbose && println("$(string(index)) reached performance ", p)
     index
 end

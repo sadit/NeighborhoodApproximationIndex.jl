@@ -17,21 +17,7 @@ Pkg.add("NeighborhoodApproximation")
 
 ## Usage
 
-```julia
-using SimilaritySearch
-using NeighborhoodApproximationIndex
-function create_dataset(n, dim)
-    [rand(Float32, dim) for i in 1:n]
-end
-
-X = create_dataset(10_000, 8)
-queries = create_dataset(100, 8)
-napp = fit(DeloneInvIndex, l2_distance, X; numcenters=128, initial=:rand, maxiters=3, region_expansion=3)
-```
-
 See examples at [examples directory](https://github.com/sadit/NeighborhoodApproximationIndex.jl/tree/main/examples) of this repository. These are [Pluto.jl](https://github.com/fonsp/Pluto.jl) notebooks, and probably you must install it in you wanna take a look.
-
-
 
 
 ## About the methods in this package
@@ -42,7 +28,6 @@ Edgar Chavez, Mario Graff, Gonzalo Navarro, Eric S. Tellez:
 Near neighbor searching with K nearest references. Inf. Syst. 51: 43-61 (2015)
 
 Eric S. Tellez, Edgar Chavez, Gonzalo Navarro: Succinct nearest neighbor search. Inf. Syst. 38(7): 1019-1030 (2013)
-
 Eric S. Tellez, Edgar Chavez, Gonzalo Navarro: Succinct nearest neighbor search. SISAP 2011: 33-40 (2011)
 
 ```

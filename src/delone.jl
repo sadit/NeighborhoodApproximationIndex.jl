@@ -33,22 +33,15 @@ Base.copy(D::DeloneInvertedFile;
     v=SVEC()
     ) = DeloneInvertedFile(; dist, db, centers, invfile, k, t, res, v)
 
-function encode!(D::DeloneInvertedFile, obj::T, v=nothing, res=nothing) where T
-    if res === nothing
-        empty!(D.res, D.k)
-        res = D.res
-    else
-        empty!(res)
+function encode!(D::DeloneInvertedFile, obj::T) where T
+    empty!(D.v)
+    empty!(D.res, D.k)
+
+    for (id_, d_) in search(D.centers, obj, D.res)
+        D.v[id_] = d_
     end
 
-    v = v === nothing ? D.v : v
-    empty!(v)
- 
-    for (id_, d_) in search(D.centers, obj, res)
-        v[id_] = d_
-    end
-
-    normalize!(v)
+    normalize!(D.v)
 end
 
 function Base.push!(D::DeloneInvertedFile, obj, v::DVEC)
@@ -64,11 +57,8 @@ function Base.append!(D::DeloneInvertedFile, db; parallel_block=1, encode=true, 
             push!(D, v, v)
         end
     elseif parallel_block > 1
-
         nt = Threads.nthreads()
-        E = [SVEC() for i in 1:parallel_block]
-        S = [KnnResult(D.k) for i in 1:nt]
-        
+        D_ = [copy(D) for i in 1:nt]
         sp = 1
         n = length(db)
         
@@ -77,11 +67,11 @@ function Base.append!(D::DeloneInvertedFile, db; parallel_block=1, encode=true, 
             verbose && println(stderr, "$(typeof(D)) appending chunk ", (sp=sp, ep=ep, n=n), " ", Dates.now())
             begin
                 Threads.@threads for i in sp:ep
-                    encode!(D, db[i], S[Threads.threadid()], E[i-sp+1])
+                    encode!(D_[Threads.threadid()], db[i])
                 end
         
-                for i in eachindex(E)
-                    push!(D, db[sp+i-1], E[i])
+                for i in eachindex(D_)
+                    push!(D, db[sp+i-1], D_[i].v)
                 end
             end
 
@@ -106,7 +96,8 @@ function DeloneInvertedFile(
         t=1,
         initial=:dnet,
         maxiters=3,
-        parallel_block=Threads.nthreads() > 1 ? 4096 : 1
+        parallel_block=Threads.nthreads() > 1 ? 1024 : 1,
+        verbose=true
     )
 
     C = kcenters(dist, train, numcenters; initial=initial, maxiters=maxiters)
@@ -118,7 +109,7 @@ function DeloneInvertedFile(
         t=t
     )
 
-    append!(D, db; parallel_block)
+    append!(D, db; parallel_block, verbose)
     D
 end
 
@@ -127,8 +118,8 @@ end
 
 Searches nearest neighbors of `q` inside the `index` under the distance function `dist`.
 """
-function search(D::DeloneInvertedFile, q, res::KnnResult; v=D.v, t=D.t)
-    Q = prepare_posting_lists_for_querying(D.invfile, encode!(D, q, v))
+function search(D::DeloneInvertedFile, q, res::KnnResult; t=D.t)
+    Q = prepare_posting_lists_for_querying(D.invfile, encode!(D, q))
 
 	umerge(Q, t) do L, P, m
         @inbounds begin

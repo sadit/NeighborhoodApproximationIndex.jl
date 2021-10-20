@@ -16,12 +16,12 @@ using KCenters, SimilaritySearch, NeighborhoodApproximationIndex
     Q = [randn(dim) for i in 1:100]
     dist = SqL2Distance()
     seq = ExhaustiveSearch(dist, X)
-    ksearch = 2
+    kbuild, ksearch, t, recall = 3, 1, 1, 0.9
     P = Performance(seq, Q, 7)
-    index = DeloneInvertedFile(dist, X; initial=:rand, k=ksearch)
-    p = probe(P, index)
+    index = DeloneInvertedFile(dist, X; initial=:rand, maxiters=3, k=kbuild, t=t)
+    p = probe(P, copy(index, k=ksearch))
     @info "before optimization: $(index)" (recall=p.macrorecall, queries_per_second= 1 / p.searchtime, eval_ratio=p.evaluations / length(X))
-    @test p.macrorecall > 0.7
+    @test p.macrorecall > recall
     #optimize!(P, index, 0.9, verbose=true)
     #p = probe(P, index)
 

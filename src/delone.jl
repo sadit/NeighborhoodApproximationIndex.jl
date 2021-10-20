@@ -15,6 +15,7 @@ export DeloneInvertedFile, search
     centers::CentersType
     invfile::InvertedFileType = InvertedFile()
     k::Int32 = 7
+    t::Int32 = 1
     res::KnnResultType = KnnResult(1)
     v::DVEC = SVEC()
 end
@@ -27,9 +28,10 @@ Base.copy(D::DeloneInvertedFile;
     centers=D.centers,
     invfile=D.invfile,
     k=D.k,
+    t=D.t,
     res=KnnResult(1),
     v=SVEC()
-    ) = DeloneInvertedFile(; dist, db, centers, invfile, k, res, v)
+    ) = DeloneInvertedFile(; dist, db, centers, invfile, k, t, res, v)
 
 function encode!(D::DeloneInvertedFile, obj::T, v=nothing, res=nothing) where T
     if res === nothing
@@ -101,6 +103,7 @@ function DeloneInvertedFile(
         numcenters=ceil(Int, sqrt(length(db))),
         train=rand(db, 2*numcenters),
         k=5,
+        t=1,
         initial=:dnet,
         maxiters=3,
         parallel_block=Threads.nthreads() > 1 ? 4096 : 1
@@ -112,6 +115,7 @@ function DeloneInvertedFile(
         db=eltype(db)[],
         centers=ExhaustiveSearch(dist, C.centers),
         k=k,
+        t=t
     )
 
     append!(D, db; parallel_block)
@@ -123,12 +127,14 @@ end
 
 Searches nearest neighbors of `q` inside the `index` under the distance function `dist`.
 """
-function search(D::DeloneInvertedFile, q, res::KnnResult; v=D.v)
-    Q = prepare_posting_lists_for_querying(D.invfile, encode!(D, q))
-    t = 1
+function search(D::DeloneInvertedFile, q, res::KnnResult; v=D.v, t=D.t)
+    Q = prepare_posting_lists_for_querying(D.invfile, encode!(D, q, v))
+
 	umerge(Q, t) do L, P, m
-        @inbounds id = L[1].I[P[1]]
-		push!(res, id, evaluate(D.dist, D.db[id], q))
+        @inbounds begin
+            id = L[1].I[P[1]]
+		    push!(res, id, evaluate(D.dist, D.db[id], q))
+        end
 	end
 
     res

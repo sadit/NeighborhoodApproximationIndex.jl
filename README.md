@@ -11,7 +11,7 @@
 
 ```julia
 using Pkg
-Pkg.add("NeighborhoodApproximation")
+Pkg.add("NeighborhoodApproximationIndex")
 
 ```
 

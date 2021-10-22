@@ -3,21 +3,31 @@ import SimilaritySearch: search
 using InvertedFiles, Intersections, KCenters, StatsBase, Parameters, LinearAlgebra
 export DeloneInvertedFile, search
 
+const GlobalEncodeKnnResult = [KnnResult(10)]
+const GlobalEncodeVector = [SVEC()]
+
+function __init__()
+    for i in 2:Threads.nthreads()
+        push!(GlobalEncodeKnnResult, KnnResult(10))
+        push!(GlobalEncodeVector, SVEC())
+    end
+end
+
+@inline getencodeknnresult() = @inbounds GlobalEncodeKnnResult[Threads.threadid()]
+@inline getencodevector() = @inbounds GlobalEncodeVector[Threads.threadid()]
+
 @with_kw struct DeloneInvertedFile{
         DistType<:PreMetric,
         DataType<:AbstractVector,
         InvertedFileType<:InvertedFile,
-        CentersType<:AbstractSearchContext,
-        KnnResultType
+        CentersType<:AbstractSearchContext
         } <: AbstractSearchContext
     dist::DistType = SqL2Distance()
     db::DataType
     centers::CentersType
-    invfile::InvertedFileType = InvertedFile()
+    invfile::InvertedFileType
     k::Int32 = 7
     t::Int32 = 1
-    res::KnnResultType = KnnResult(1)
-    v::DVEC = SVEC()
 end
 
 @inline Base.getindex(D::DeloneInvertedFile, i) = @inbounds D.db[i]
@@ -28,20 +38,19 @@ Base.copy(D::DeloneInvertedFile;
     centers=D.centers,
     invfile=D.invfile,
     k=D.k,
-    t=D.t,
-    res=KnnResult(1),
-    v=SVEC()
-    ) = DeloneInvertedFile(; dist, db, centers, invfile, k, t, res, v)
+    t=D.t
+    ) = DeloneInvertedFile(; dist, db, centers, invfile, k, t)
 
-function encode!(D::DeloneInvertedFile, obj::T) where T
-    empty!(D.v)
-    empty!(D.res, D.k)
+function encode!(D::DeloneInvertedFile, obj::T, v::DVEC) where T
+    empty!(v)
+    encres = getencodeknnresult()
+    empty!(encres, D.k)
 
-    for (id_, d_) in search(D.centers, obj, D.res)
-        D.v[id_] = d_
+    for (id_, d_) in search(D.centers, obj, encres)
+        v[id_] = d_
     end
 
-    normalize!(D.v)
+    normalize!(v)
 end
 
 function Base.push!(D::DeloneInvertedFile, obj, v::DVEC)
@@ -58,55 +67,98 @@ function Base.append!(D::DeloneInvertedFile, db; parallel_block=1, encode=true, 
         end
     elseif parallel_block > 1
         nt = Threads.nthreads()
-        D_ = [copy(D) for i in 1:nt]
         sp = 1
         n = length(db)
-        
+        venc = [SVEC() for i in 1:parallel_block]
         while sp < n
-            ep = min(n, sp + parallel_block)
+            ep = min(n, sp + parallel_block - 1)
             verbose && println(stderr, "$(typeof(D)) appending chunk ", (sp=sp, ep=ep, n=n), " ", Dates.now())
-            begin
-                Threads.@threads for i in sp:ep
-                    encode!(D_[Threads.threadid()], db[i])
-                end
-        
-                for i in eachindex(D_)
-                    push!(D, db[sp+i-1], D_[i].v)
-                end
+            
+            Threads.@threads for i in sp:ep
+                @inbounds encode!(D, db[i], venc[i-sp+1])
+            end
+    
+            for i in sp:ep
+                @inbounds push!(D, db[i], venc[i-sp+1])
             end
 
             sp = ep + 1
         end
     else
         for v in db
-            push!(D, v, encode!(D, v))
+            push!(D, v, encode!(D, v, getencodevector()))
         end
     end
 
     D
 end
 
-
-function DeloneInvertedFile(
+"""
+    DeloneInvertedFile(
         dist::PreMetric,
-        db;
+        db::AbstractVector;
         numcenters=ceil(Int, sqrt(length(db))),
-        train=rand(db, 2*numcenters),
+        refs=:rand,
+        centers=:delone,
         k=5,
         t=1,
-        initial=:dnet,
-        maxiters=3,
         parallel_block=Threads.nthreads() > 1 ? 1024 : 1,
         verbose=true
     )
 
-    C = kcenters(dist, train, numcenters; initial=initial, maxiters=maxiters)
+Creates a `DeloneInvertedFile`, high level interface.
+
+- `dist`: Distance object (a `PreMetric` object, see `Distances.jl`)
+- `db`: Objects to be indexed
+- `centers`: An index on a set of references used to create the index. It can also be a symbol that describes how to create the index. Valid symbols are:
+  - `:delone` creates a DeloneInvertedFile
+  - `:graph` creates a SearchGraph
+  - `:exhaustive` creates an ExhaustiveSearch
+  Please note that these indexes will be created with generic parameters
+- `numcenters` number of centers to insert, only used if `centers` is not an index
+- `refs`: References, it can be raw objects or symbols indicating how to compute them `:rand`, `:dnet`, `:fft` (see `KCenters.jl`). Only used if `centers` is not an index
+- `k` the number of references to be used
+- `t` the number of occurrences in the inverted file required to accept an object as candidate in the result set
+- `parallel_block` Parallel construction works on batches, this is the size of these blocks
+- `verbose` true if you want to see messages
+"""
+function DeloneInvertedFile(
+        dist::PreMetric,
+        db::AbstractVector;
+        numcenters=ceil(Int, sqrt(length(db))),
+        refs=:rand,
+        centers=:delone,
+        k=5,
+        t=1,
+        parallel_block=Threads.nthreads() > 1 ? 1024 : 1,
+        verbose=true
+    )
+
+    if centers === nothing || centers in (:delone, :graph, :exhaustive)
+        if refs === :rand
+            refs = db[unique(rand(1:length(db), numcenters))]
+        elseif refs in (:dnet, :fft)
+            train = db[unique(rand(1:length(db), 3*numcenters))]
+            C = kcenters(dist, train, numcenters; initial=refs, maxiters=0)
+            refs = C.centers[C.dmax .> 0.0]
+        end
+        
+        if centers === :delone
+            m = ceil(Int, length(refs) / log2(length(refs)))
+            centers = DeloneInvertedFile(dist, refs; numcenters=m, centers=:exhaustive, k=3, t=1, verbose)
+        elseif centers === :exhaustive
+            centers = ExhaustiveSearch(dist, refs)
+        elseif centers === :graph
+            centers = SearchGraph(; dist, db=eltype(refs)[])
+            append!(centers, refs; parallel_block=1024)
+        end
+    end
+    
     D = DeloneInvertedFile(;
-        dist=dist,
+        dist, k, t,
         db=eltype(db)[],
-        centers=ExhaustiveSearch(dist, C.centers),
-        k=k,
-        t=t
+        invfile=InvertedFile(length(centers)),
+        centers=centers
     )
 
     append!(D, db; parallel_block, verbose)
@@ -119,7 +171,7 @@ end
 Searches nearest neighbors of `q` inside the `index` under the distance function `dist`.
 """
 function search(D::DeloneInvertedFile, q, res::KnnResult; t=D.t)
-    Q = prepare_posting_lists_for_querying(D.invfile, encode!(D, q))
+    Q = prepare_posting_lists_for_querying(D.invfile, encode!(D, q, getencodevector()))
 
 	umerge(Q, t) do L, P, m
         @inbounds begin

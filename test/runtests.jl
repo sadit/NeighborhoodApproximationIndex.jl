@@ -18,7 +18,7 @@ using KCenters, SimilaritySearch, NeighborhoodApproximationIndex
     seq = ExhaustiveSearch(dist, X)
     kbuild, ksearch, t, recall = 3, 1, 1, 0.9
     P = Performance(seq, Q, 7)
-    index = DeloneInvertedFile(dist, X; initial=:rand, maxiters=3, k=kbuild, t=t)
+    index = DeloneInvertedFile(dist, X; centers=:exhaustive, refs=:rand, k=kbuild, t=t)
     p = probe(P, copy(index, k=ksearch))
     @info "before optimization: $(index)" (recall=p.macrorecall, queries_per_second= 1 / p.searchtime, eval_ratio=p.evaluations / length(X))
     @test p.macrorecall > recall

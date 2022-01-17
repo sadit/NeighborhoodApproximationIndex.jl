@@ -17,7 +17,7 @@ end
 @inline getencodevector() = @inbounds GlobalEncodeVector[Threads.threadid()]
 
 @with_kw struct DeloneInvertedFile{
-        DistType<:PreMetric,
+        DistType<:SemiMetric,
         DataType<:AbstractDatabase,
         InvertedFileType<:InvertedFile,
         CentersType<:AbstractSearchContext
@@ -46,9 +46,9 @@ Base.copy(D::DeloneInvertedFile;
 function encode!(D::DeloneInvertedFile, obj::T, v::DVEC) where T
     empty!(v)
     encres = getencodeknnresult()
-    empty!(encres, D.k)
+    reuse!(encres, D.k)
 
-    for (id_, d_) in search(D.centers, obj, encres)
+    for (id_, d_) in search(D.centers, obj, encres).res
         v[id_] = d_
     end
 
@@ -108,7 +108,7 @@ end
 
 """
     DeloneInvertedFile(
-        dist::PreMetric,
+        dist::SemiMetric,
         db;
         numcenters=ceil(Int, sqrt(length(db))),
         refs=:rand,
@@ -121,7 +121,7 @@ end
 
 Creates a `DeloneInvertedFile`, high level interface.
 
-- `dist`: Distance object (a `PreMetric` object, see `Distances.jl`)
+- `dist`: Distance object (a `SemiMetric` object, see `Distances.jl`)
 - `db`: Objects to be indexed
 - `centers`: An index on a set of references used to create the index. It can also be a symbol that describes how to create the index. Valid symbols are:
   - `:delone` creates a DeloneInvertedFile
@@ -136,7 +136,7 @@ Creates a `DeloneInvertedFile`, high level interface.
 - `verbose` true if you want to see messages
 """
 function DeloneInvertedFile(
-        dist::PreMetric,
+        dist::SemiMetric,
         db;
         numcenters=ceil(Int, sqrt(length(db))),
         refs=:rand,
@@ -150,9 +150,9 @@ function DeloneInvertedFile(
 
     if centers === nothing || centers in (:delone, :graph, :exhaustive)
         if refs === :rand
-            refs = db[unique(rand(1:length(db), numcenters))]
+            refs = SubDatabase(db, unique(rand(1:length(db), numcenters)))
         elseif refs in (:dnet, :fft)
-            train = db[unique(rand(1:length(db), 3*numcenters))]
+            train = SubDatabase(db, unique(rand(1:length(db), 3*numcenters)))
             C = kcenters(dist, train, numcenters; initial=refs, maxiters=0)
             refs = C.centers[C.dmax .> 0.0]
         end
@@ -171,10 +171,8 @@ function DeloneInvertedFile(
     end
     
     D = DeloneInvertedFile(;
-        dist, k, t,
-        db=db,
+        dist, k, t, db, centers,
         invfile=InvertedFile(length(centers)),
-        centers=centers
     )
 
     index!(D; parallel_block, verbose)
@@ -188,14 +186,16 @@ Searches nearest neighbors of `q` inside the `index` under the distance function
 """
 function search(D::DeloneInvertedFile, q, res::KnnResult; t=D.t)
     Q = prepare_posting_lists_for_querying(D.invfile, encode!(D, q, getencodevector()))
+    count = Ref(0)
 	umerge(Q, t) do L, P, m
         @inbounds begin
             id = L[1].I[P[1]]
 		    push!(res, id, evaluate(D.dist, D[id], q))
+            count[] += 1
         end
 	end
 
-    res
+    (res=res, cost=count[])
 end
 
 #=

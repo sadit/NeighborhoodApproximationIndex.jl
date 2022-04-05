@@ -5,7 +5,7 @@ module NeighborhoodApproximationIndex
 using SimilaritySearch
 using Dates
 
-#include("knr.jl")
-include("delone.jl")
+include("refs.jl")
+include("knr.jl")
 
 end

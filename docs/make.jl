@@ -1,5 +1,4 @@
-using NeighborhoodApproximationIndex
-using Documenter
+using Documenter, NeighborhoodApproximationIndex
 
 makedocs(;
     modules=[NeighborhoodApproximationIndex],
@@ -7,15 +6,18 @@ makedocs(;
     repo="https://github.com/sadit/NeighborhoodApproximationIndex.jl/blob/{commit}{path}#L{line}",
     sitename="NeighborhoodApproximationIndex.jl",
     format=Documenter.HTML(;
-        prettyurls=get(ENV, "CI", "false") == "true",
+        prettyurls=get(ENV, "CI", nothing) == "true",
         canonical="https://sadit.github.io/NeighborhoodApproximationIndex.jl",
         assets=String[],
     ),
     pages=[
-        "Home" => "index.md",
+        "Home" => "index.md"
     ],
 )
 
 deploydocs(;
     repo="github.com/sadit/NeighborhoodApproximationIndex.jl",
+    devbranch=nothing,
+    branch = "gh-pages",
+    versions = ["stable" => "v^", "v#.#.#", "dev" => "dev"]
 )

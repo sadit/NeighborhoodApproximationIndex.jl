@@ -1,7 +1,7 @@
 name = "NeighborhoodApproximationIndex"
 uuid = "73dc1408-15d9-420f-8382-2ac46fb81e72"
 authors = ["Eric S. Tellez"]
-version = "0.4.0"
+version = "0.4.1"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"

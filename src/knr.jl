@@ -1,21 +1,26 @@
 # This file is a part of NeighborhoodApproximationIndex.jl
+
 import SimilaritySearch: search, getpools, getknnresult, index!
 using InvertedFiles, Intersections, KCenters, StatsBase, Parameters, LinearAlgebra
 export KnrIndex, search
 
+mutable struct KnrOpt
+    ksearch::Int32
+end
+
 struct KnrIndex{
             DistType<:SemiMetric,
             DataType<:AbstractDatabase,
-            InvertedFileType<:InvertedFiles.AbstractInvertedFile,
-            CentersType<:AbstractSearchContext
+            CentersIndex<:AbstractSearchContext,
+            InvIndexType<:AbstractInvertedFile
         } <: AbstractSearchContext
     dist::DistType
     db::DataType
-    centers::CentersType
-    invfile::InvertedFileType
+    centers::CentersIndex
+    invfile::InvIndexType
     kbuild::Int32
-    ksearch::Int32
     rerank::Bool
+    opt::KnrOpt
 end
 
 @inline Base.length(idx::KnrIndex) = length(idx.invfile)
@@ -47,46 +52,41 @@ end
 getpools(::KnrIndex; results=SimilaritySearch.GlobalKnnResult, encoderesults=GlobalEncodeKnnResult) =
     KnrPools(results, encoderesults)
 
-function Base.push!(D::KnrIndex, obj; pools=getpools(D), encpools=getpools(D.centers))
-    res = getencodeknnresult(D.kbuild, pools)
-    search(D.centers, obj, res; pools=encpools)
-    push!(D.invfile, (length(D) + 1) => zip(res.id, res.dist))
-    D
+function Base.push!(idx::KnrIndex, obj; pools=getpools(idx), encpools=getpools(idx.centers))
+    res = getencodeknnresult(idx.kbuild, pools)
+    search(idx.centers, obj, res; pools=encpools)
+    push!(idx.invfile, res)
+    idx
 end
 
 get_parallel_block(n) = min(n, 8 * Threads.nthreads())
 
-function Base.append!(D::KnrIndex, db;
+function Base.append!(idx::KnrIndex, db;
         parallel_block=get_parallel_block(length(db)),
-        pools=getpools(D),
+        pools=getpools(idx),
         verbose=true
     )
 
-    append!(D.db, db)
-    index!(D; parallel_block, pools, verbose)
+    append!(idx.db, db)
+    index!(idx; parallel_block, pools, verbose)
 end
 
-function index!(D::KnrIndex;
-        parallel_block=get_parallel_block(length(D.db)),
-        pools=nothing,
-        verbose=true
-    )
-
-    sp = length(D) + 1
-    n = length(D.db)
-    E = [KnnResult(D.kbuild) for _ in 1:parallel_block]
+function index!(idx::KnrIndex; parallel_block=get_parallel_block(length(idx.db)), pools=nothing, verbose=true)
+    sp = length(idx) + 1
+    n = length(idx.db)
+    E = [KnnResult(idx.kbuild) for _ in 1:parallel_block]
     while sp < n
         ep = min(n, sp + parallel_block - 1)
-        verbose && println(stderr, "$(typeof(D)) appending chunk ", (sp=sp, ep=ep, n=n), " ", Dates.now())
+        verbose && println(stderr, "$(typeof(idx)) appending chunk ", (sp=sp, ep=ep, n=n), " ", Dates.now())
     
         Threads.@threads for i in sp:ep
             begin
-                res = reuse!(E[i - sp + 1], D.kbuild)
-                search(D.centers, D[i], res)
+                res = reuse!(E[i - sp + 1], idx.kbuild)
+                search(idx.centers, idx[i], res)
             end
         end
 
-        append!(D.invfile, VectorDatabase(E), ep-sp+1; parallel_block)
+        append!(idx.invfile, VectorDatabase(E), ep-sp+1; parallel_block)
         sp = ep + 1
     end
 end
@@ -122,14 +122,13 @@ function KnrIndex(
         refs=references(dist, db),
         centers=nothing,
         kbuild=3,
-        ksearch=kbuild,
+        ksearch=1,
         centersrecall::AbstractFloat=1.0,
         rerank=true,
         pools=nothing,
         parallel_block=get_parallel_block(length(db)),
         verbose=false
     )
-
     kbuild = convert(Int32, kbuild)
     ksearch = convert(Int32, ksearch)
 
@@ -138,59 +137,15 @@ function KnrIndex(
             centers = ExhaustiveSearch(; db=refs, dist)
         else
             0 < centersrecall < 1 || throw(ArgumentError("the expected recall for centers index should be 0 < centersrecall < 0"))
-            centers = SearchGraph(; db=refs, dist)
+            centers = SearchGraph(; db=refs, dist, verbose)
             index!(centers; parallel_block)
             optimize!(centers, OptimizeParameters(kind=MinRecall(centersrecall)))
         end
     end
     
     invfile = invfiletype(length(centers), invfiledist, Int32)
-    D = KnrIndex(dist, db, centers, invfile, kbuild, ksearch, rerank)
-    pools = pools === nothing ? getpools(D) : pools
-    index!(D; parallel_block, pools, verbose)
-    D
+    idx = KnrIndex(dist, db, centers, invfile, kbuild, rerank, KnrOpt(ksearch))
+    pools = pools === nothing ? getpools(idx) : pools
+    index!(idx; parallel_block, pools, verbose)
+    idx
 end
-
-"""
-    search(idx::KnrIndex, q::T, res::KnnResult; rerank=idx.rerank, pools=getpools(D))
-
-Searches nearest neighbors of `q` inside the `index` under the distance function `dist`.
-"""
-function search(idx::KnrIndex, q, res::KnnResult; ksearch=idx.ksearch, rerank=idx.rerank, pools=getpools(idx))
-    enc = getencodeknnresult(ksearch, pools)
-    search(idx.centers, q, enc)
-    Q = prepare_posting_lists_for_querying(idx.invfile, enc)
-
-    if rerank
-        search(idx.invfile, Q) do objID, d  # it is also possible to add an additional state of filtering if the distance function is too costly
-            @inbounds push!(res, objID, evaluate(idx.dist, q, idx[objID]))
-        end
-    else
-        search(idx.invfile, Q) do objID, d
-            push!(res, objID, d)
-        end
-    end
-
-    (res=res, cost=0)
-end
-
-#=
-"""
-    optimize!(perf::Performance, index::KnrIndex, recall=0.9; numqueries=128, verbose=false, k=10)
-
-Tries to configure `index` to achieve the specified recall for fetching `k` nearest neighbors.
-"""
-function optimize!(perf::Performance, index::KnrIndex, recall=0.9; numqueries=128, verbose=false, k=10)
-    verbose && println("$(string(index)) optimizing for recall=$(recall)")
-    index.opts.ksearch = 1
-    p = probe(perf, index)
-
-    while p.macrorecall < recall && index.opts.ksearch < length(index.lists)
-        index.opts.ksearch += 1
-        verbose && println(stderr, "$(string(index)) optimize! step ksearch=$(index.opts.ksearch), performance ", p)
-        p = probe(perf, index)
-    end
-
-    verbose && println("$(string(index)) reached performance ", p)
-    index
-end=#

@@ -123,7 +123,7 @@ function KnrIndex(
         centers=nothing,
         kbuild=3,
         ksearch=1,
-        centersrecall::AbstractFloat=1.0,
+        centersrecall::AbstractFloat=length(db) > 10^3 ? 0.95 : 1.0,
         rerank=true,
         pools=nothing,
         parallel_block=get_parallel_block(length(db)),

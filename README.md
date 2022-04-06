@@ -1,10 +1,7 @@
 # Similarity Search Indexes based on Neighborhood Approximation
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://sadit.github.io/NeighborhoodApproximationIndex.jl/stable)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://sadit.github.io/NeighborhoodApproximationIndex.jl/dev)
-[![Build Status](https://travis-ci.com/sadit/NeighborhoodApproximationIndex.jl.svg?branch=master)](https://travis-ci.com/sadit/NeighborhoodApproximationIndex.jl)
 [![Build Status](https://github.com/sadit/NeighborhoodApproximationIndex.jl/workflows/CI/badge.svg)](https://github.com/sadit/NeighborhoodApproximationIndex.jl/actions)
-[![Coverage](https://codecov.io/gh/sadit/NeighborhoodApproximationIndex.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/sadit/NeighborhoodApproximationIndex.jl)
 
 
 ## Installation
@@ -15,13 +12,19 @@ Pkg.add("NeighborhoodApproximationIndex")
 
 ```
 
-## Usage
+## About the `KnrIndex`
 
-See examples at [examples directory](https://github.com/sadit/NeighborhoodApproximationIndex.jl/tree/main/examples) of this repository. These are [Pluto.jl](https://github.com/fonsp/Pluto.jl) notebooks, and probably you must install it in you wanna take a look.
+This package defines the `KnrIndex` similarity search index that takes advantage of multithreading systems.
+It is based on inverted files [`InvertedFiles`](https://github.com/sadit/InvertedFiles.jl) and [`SimilaritySearch`](https://github.com/sadit/SimilaritySearch.jl).
+In particular, it supports any SemiMetric distance function, as defined in [`Distances`](https://github.com/JuliaStats/Distances.jl) package. For instance, you can use distances for vectors, sets, strings, etc.,
+as defined in `SimilaritySearch` or [`StringDistances`](https://github.com/matthieugomez/StringDistances.jl) packages.
 
+As `SearchGraph` in `SimilaritySearch`, the `KnrIndex` supports auto-configuration, using `optimize!`. Contrary to `SimilaritySearch`, the optimization it is only performed for searching purposes.
 
-## About the methods in this package
-This package contains some implementations of approximate similarity search methods based on neighborhood approximation, similar to those found in 
+See [https://github.com/sadit/SimilaritySearchDemos](https://github.com/sadit/SimilaritySearchDemos), almost all examples should be reproduced using the `KnrIndex` defined in `NeighborhoodApproximationIndex`,
+just using the index and calling `optimize!` with the corresponding arguments (see documentation for more details).
+
+The basic ideas of this package are described in  
 
 ```
 Edgar Chavez, Mario Graff, Gonzalo Navarro, Eric S. Tellez:
@@ -32,4 +35,5 @@ Eric S. Tellez, Edgar Chavez, Gonzalo Navarro: Succinct nearest neighbor search.
 
 ```
 
-I am rewritting some of this methods in Julia. Therefore, by now, you will not find a complete set of features (like compact datastructures) or a broad exploration in the distance functions in the mapped space. The precise implementations with compression can be found in the old C# library [natix](https://github.com/sadit/natix).
+The `KnrIndex` supports appending and automatic optimization to achieve some desired performance, also, user-based distance functions could work pretty fast since the indexes are written in the Julia language.
+Nonetheless, the inverted files are plain in-memory structures without any kind of compression or compactness. The compressed datastructure can be found in the old C# library [natix](https://github.com/sadit/natix).

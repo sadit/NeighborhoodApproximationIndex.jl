@@ -66,9 +66,33 @@ end
 _kfun(x) = 1.0 - 1.0 / (1.0 + x)
 
 """
-    optimize!(perf::Performance, index::KnrIndex, recall=0.9; numqueries=128, verbose=false, k=10)
+    optimize!(
+        index::KnrIndex,
+        kind::ErrorFunction=ParetoRecall();
+        queries=nothing,
+        queries_ksearch=10,
+        queries_size=64,
+        initialpopulation=8,
+        verbose=false,
+        space=KnrOptSpace(),
+        params=SearchParams(; maxpopulation=8, bsize=4, mutbsize=8, crossbsize=2, tol=-1.0, maxiters=8, verbose),
+    )
 
-Tries to configure `index` to achieve the specified recall for fetching `k` nearest neighbors.
+Tries to configure the `index` to achieve the specified performance (`kind`). The optimization procedure is an stochastic search over the configuration space yielded by `kind` and `queries`.
+
+# Arguments
+- `index`: the `KnrIndex` to be optimized
+- `kind`: The kind of optimization to apply, it can be `ParetoRecall()`, `ParetoRadius()` or `MinRecall(r)` where `r` is the expected recall (0-1, 1 being the best quality but at cost of the search time)
+
+# Keyword arguments
+
+- `queries`: the set of queries to be used to measure performances, a validation set. It can be an `AbstractDatabase` or nothing.
+- `queries_ksearch`: the number of neighbors to retrieve for `queries`
+- `queries_size`: if `queries===nothing` then a sample of the already indexed database is used, `queries_size` is the size of the sample.
+- `initialpopulation`: the initial sample for the optimization procedure
+- `space`: defines the search space
+- `params`: the parameters of the solver, see [`search_models` function from `SearchModels.jl`](https://github.com/sadit/SearchModels.jl) package for more information.
+- `verbose`: controls if the procedure is verbose or not
 """
 function optimize!(
             index::KnrIndex,

@@ -8,7 +8,6 @@ mutable struct KnrOpt
     ksearch::Int32
 end
 
-
 abstract type KnrOrderingStrategy end
 
 """

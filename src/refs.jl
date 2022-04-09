@@ -13,10 +13,10 @@ The set of references are computed taking into account the specified `r` but als
 
 # Keyword arguments
 - `k::Int`: the number of centers to compute, defaults to `sqrt(|db|)`
+- `sample::Real`: indicates the sampling size before computing the set of `k` references, defaults to `log(|db|) k`; `sample=0` means for no sampling.
 - `maxiters::Int`: number of iterationso  of the Lloyd algorithm that should be applied on the initial computation of centers, that is, `maxiters > 0` applies `maxiters` iterations of the algorithm.
 - `tol::Float64`: change tolerance to stop the Lloyd algorithm (error changes smaller than `tol` among iterations will stop the algorithm)
 - `initial`: initial centers or a strategy to compute initial centers, symbols `:rand`, `:fft`, and `:dnet`.
-
 There are several interactions between initial values and parameter interactions (described in `KCenters` object), for instance,
 the `maxiters > 0` apply the Lloyd's algorithm to the initial computation of references.
 
@@ -37,8 +37,19 @@ Note 2: The error function is defined as the mean of distances of all objects in
 
 Note 3: The computation of references on large databases can be prohibitive, in these cases please consider to work on a sample of `db`
 """
-function references(dist::SemiMetric, db; k=ceil(Int, sqrt(length(db))), maxiters=0, tol=0.001, initial=:rand)
+function references(
+      dist::SemiMetric, db;
+      k=ceil(Int, sqrt(length(db))),
+      sample=ceil(Int, log2(length(db)) * k),
+      maxiters=0,
+      tol=0.001, initial=:rand)
     0 < k < length(db) || throw(ArgumentError("invalid relation between k and n, must follow 0 < k < n"))
-    C = kcenters(dist, db, k; initial, maxiters, tool)
+    C = if sample > 0
+      s = unique(rand(eachindex(db), sample))
+      kcenters(dist, SubDatabase(db, s), k; initial, maxiters, tol)
+    else
+      kcenters(dist, db, k; initial, maxiters, tol)
+    end
+    
     C.centers[C.dmax .> 0.0]  # centers covering more than itself
 end

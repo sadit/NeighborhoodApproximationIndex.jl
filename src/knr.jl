@@ -1,6 +1,6 @@
 # This file is a part of NeighborhoodApproximationIndex.jl
 
-import SimilaritySearch: search, getpools, getknnresult, index!
+import SimilaritySearch: search, getpools, index!
 using InvertedFiles, Intersections, KCenters, StatsBase, Parameters, LinearAlgebra
 export KnrIndex, search, KnrOrderingStrategies, DistanceOrdering, InternalDistanceOrdering, DistanceOnTopKOrdering
 
@@ -71,31 +71,36 @@ end
 @inline Base.length(idx::KnrIndex) = length(idx.invfile)
 Base.show(io::IO, idx::KnrIndex) = print(io, "{$(typeof(idx)) centers=$(typeof(idx.centers)), n=$(length(idx)), ordering=$(idx.ordering)}")
 
-const GlobalEncodeKnnResult = [KnnResult(10)]
+"""
+    struct KnrCaches
+        enc
+    end
+    
+Caches used for `KnrIndex` (one per thread)
+
+# Properties
+- `enc`: `KnnResult` for encoding purposes
+"""
+struct KnrCaches
+    enc::KnnResult
+end
+
+
+const GlobalKnrCachesPool = Vector{KnrCaches}(undef, 0)
 
 function __init__()
-    for i in 2:Threads.nthreads()
-        push!(GlobalEncodeKnnResult, KnnResult(10))
+    n = Threads.nthreads()
+
+    while length(GlobalKnrCachesPool) < n
+        push!(GlobalKnrCachesPool, KnrCaches(KnnResult(10)))
     end
 end
 
-struct KnrPools
-    results::Vector{KnnResult}
-    encoderesults::Vector{KnnResult}
-end
+getpools(idx::KnrIndex) = GlobalKnrCachesPool
 
-@inline function getknnresult(k::Integer, pools::KnrPools)
-    res = @inbounds pools.results[Threads.threadid()]
-    reuse!(res, k)
+function getencodeknnresult(k::Integer, pools::Vector{KnrCaches})
+    reuse!(pools[Threads.threadid()].enc, k)
 end
-
-@inline function getencodeknnresult(k::Integer, pools::KnrPools)
-    res = @inbounds pools.encoderesults[Threads.threadid()]
-    reuse!(res, k)
-end
-
-getpools(::KnrIndex; results=SimilaritySearch.GlobalKnnResult, encoderesults=GlobalEncodeKnnResult) =
-    KnrPools(results, encoderesults)
 
 """
     push!(idx::KnrIndex, obj; pools=getpools(idx), encpools=getpools(idx.centers))
@@ -182,7 +187,9 @@ end
         db::AbstractDatabase;
         invfiletype=BinaryInvertedFile,
         invfiledist=JaccardDistance(),
-        refs=references(dist, db),
+        initial=:dnet,
+        maxiters=0,
+        refs=references(dist, db; initial),
         centers=nothing,
         kbuild=3,
         ksearch=1,
@@ -203,6 +210,8 @@ A convenient function to create a `KnrIndex`, it uses several default arguments.
 - `invfiletype`: the type of the underlying inverted file (`BinaryInvertedFile` or `WeightedInvertedFile`)
 - `invfiledist`: the distance of the underlying inverted file (see [`InvertedFiles.jl`](https://github.com/sadit/InvertedFiles.jl) package)
 - `centers`: The index used for centers/references, if `centers === nothing` then a sample of `db` will be used.
+- `initial`: indicates how references are selected, only used if `refs` will be computed; see [`references`](@ref) for more detail.
+- `maxiters`: how many iterations of the Lloyd algorithm are applied to initial references, only used if `refs` will be computed; see [`references`](@ref) for more detail.
 - `refs`: the set of reference, only used if `centers === nothing`
 - `centersrecall`: used when `centers === nothing`; if `centersrecall == 1` then it will create an exact index on `refs` or an approximate if `0 < centersrecall < 1`
 - `kbuild`: the number of references to compute and store on construction
@@ -217,7 +226,9 @@ function KnrIndex(
         db::AbstractDatabase;
         invfiletype=BinaryInvertedFile,
         invfiledist=JaccardDistance(),
-        refs=references(dist, db),
+        initial=:dnet,
+        maxiters=0,
+        refs=references(dist, db; initial, maxiters),
         centers=nothing,
         kbuild::Integer=3,
         ksearch::Integer=1,
@@ -241,7 +252,7 @@ function KnrIndex(
         end
     end
     
-    invfile = invfiletype(length(centers), invfiledist, Int32)
+    invfile = invfiletype(length(centers), invfiledist)
     idx = KnrIndex(dist, db, centers, invfile, kbuild, ordering, KnrOpt(ksearch))
     pools = pools === nothing ? getpools(idx) : pools
     index!(idx; parallel_block, pools, verbose)
